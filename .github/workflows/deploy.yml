@@ -246,7 +246,77 @@ jobs:
             --services ${{ env.ECS_SERVICE }} \
             --no-cli-pager || echo "Service may still be starting up"
 
-      - name: Setup CloudFront (first deploy only)
+      - name: Ensure CloudFront distribution exists
+        id: ensure-cf
+        run: |
+          set -e
+          # Check if CloudFront distribution already exists
+          EXISTING_CF=$(aws cloudfront list-distributions --region ${{ env.AWS_REGION }} 2>/dev/null | \
+            jq -r '.DistributionList.Items[] | select(.Comment=="Vacation Planner Streamlit App") | .DomainName' | head -1)
+          
+          if [ -n "$EXISTING_CF" ] && [ "$EXISTING_CF" != "null" ]; then
+            echo "CloudFront distribution already exists: $EXISTING_CF"
+            echo "cloudfront-domain=$EXISTING_CF" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Get ALB DNS name
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names vacation-planner-alb \
+            --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null)
+          
+          if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" = "None" ]; then
+            echo "⚠️  ALB not ready yet, skipping CloudFront creation"
+            exit 0
+          fi
+          
+          echo "Creating CloudFront distribution..."
+          cat > /tmp/cf-config.json << EOF
+          {
+            "CallerReference": "vacation-planner-$(date +%s)",
+            "Comment": "Vacation Planner Streamlit App",
+            "Enabled": true,
+            "Origins": {
+              "Quantity": 1,
+              "Items": [
+                {
+                  "Id": "ALBOrigin",
+                  "DomainName": "$ALB_DNS",
+                  "CustomOriginConfig": {
+                    "HTTPPort": 80,
+                    "HTTPSPort": 443,
+                    "OriginProtocolPolicy": "http-only"
+                  }
+                }
+              ]
+            },
+            "DefaultCacheBehavior": {
+              "TargetOriginId": "ALBOrigin",
+              "ViewerProtocolPolicy": "redirect-to-https",
+              "AllowedMethods": {
+                "Quantity": 7,
+                "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+                "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] }
+              },
+              "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+              "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
+              "Compress": true
+            }
+          }
+          EOF
+          
+          CF_DOMAIN=$(aws cloudfront create-distribution \
+            --distribution-config file:///tmp/cf-config.json \
+            --query 'Distribution.DomainName' --output text 2>/dev/null || echo "")
+          
+          if [ -n "$CF_DOMAIN" ]; then
+            echo "CloudFront created: $CF_DOMAIN"
+            echo "cloudfront-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️  Failed to create CloudFront, will retry on next deploy"
+          fi
+
+      - name: Setup CloudFront (first deploy only - deprecated)
         if: steps.infra.outputs.service-exists == 'false'
         run: |
           ALB_DNS=${{ steps.infra.outputs.alb-dns }}
@@ -315,10 +385,21 @@ jobs:
 
       - name: Summary
         run: |
+          CF_DOMAIN="${{ steps.ensure-cf.outputs.cloudfront-domain }}"
+          [ -z "$CF_DOMAIN" ] && CF_DOMAIN="${{ steps.infra.outputs.cloudfront-domain }}" || true
+          [ -z "$CF_DOMAIN" ] && CF_DOMAIN="unknown" || true
+          
+          ALB_DNS="${{ steps.infra.outputs.alb-dns }}"
+          [ -z "$ALB_DNS" ] && ALB_DNS="unknown" || true
+          
           echo "✅ Deployment complete!"
           echo ""
           echo "📍 Access points:"
-          echo "  • ALB (direct):     http://${{ steps.infra.outputs.alb-dns }}"
-          echo "  • CloudFront (CDN): https://${{ steps.infra.outputs.cloudfront-domain }}"
+          echo "  • ALB (direct):     http://$ALB_DNS"
+          echo "  • CloudFront (CDN): https://$CF_DOMAIN"
           echo ""
-          echo "⏱️  Note: CloudFront may take 5-15 minutes to deploy globally"
+          if [ "$CF_DOMAIN" != "unknown" ]; then
+            echo "⏱️  CloudFront may take 5-15 minutes to deploy globally"
+          else
+            echo "⚠️  CloudFront URL not yet available (check logs for errors)"
+          fi
