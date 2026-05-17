@@ -293,19 +293,32 @@ jobs:
           echo "CloudFront URL: https://$CF_DOMAIN"
           echo "ALB URL: http://$ALB_DNS"
           echo "============================================"
+          echo "cloudfront-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
+          echo "alb-dns=$ALB_DNS" >> $GITHUB_OUTPUT
 
       - name: Print deployment URLs
-        if: steps.infra.outputs.service-exists == 'true'
         run: |
           ALB_DNS=$(aws elbv2 describe-load-balancers \
             --names vacation-planner-alb \
             --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "unknown")
 
-          CF_DOMAIN=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?Comment=='Vacation Planner Streamlit App'].DomainName | [0]" \
-            --output text 2>/dev/null || echo "unknown")
+          CF_DOMAIN=$(aws cloudfront list-distributions --region ${{ env.AWS_REGION }} 2>/dev/null | \
+            jq -r '.DistributionList.Items[] | select(.Comment=="Vacation Planner Streamlit App") | .DomainName' | head -1)
+          CF_DOMAIN=${CF_DOMAIN:-"unknown"}
 
           echo "============================================"
           echo "ALB URL: http://$ALB_DNS"
           echo "CloudFront URL: https://$CF_DOMAIN"
           echo "============================================"
+          echo "cloudfront-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
+          echo "alb-dns=$ALB_DNS" >> $GITHUB_OUTPUT
+
+      - name: Summary
+        run: |
+          echo "✅ Deployment complete!"
+          echo ""
+          echo "📍 Access points:"
+          echo "  • ALB (direct):     http://${{ steps.infra.outputs.alb-dns }}"
+          echo "  • CloudFront (CDN): https://${{ steps.infra.outputs.cloudfront-domain }}"
+          echo ""
+          echo "⏱️  Note: CloudFront may take 5-15 minutes to deploy globally"
