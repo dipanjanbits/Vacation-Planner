@@ -32,6 +32,15 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Ensure CloudWatch Logs group
+        run: |
+          set -e
+          # Create log group if missing
+          aws logs describe-log-groups --log-group-name-prefix /ecs/vacation-planner --region ${{ env.AWS_REGION }} \
+            | grep -q '/ecs/vacation-planner' || aws logs create-log-group --log-group-name /ecs/vacation-planner --region ${{ env.AWS_REGION }} || true
+          # Set a reasonable retention policy
+          aws logs put-retention-policy --log-group-name /ecs/vacation-planner --retention-in-days 14 --region ${{ env.AWS_REGION }} || true
+
       - name: Create ECR repository if not exists
         run: |
           aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null || \
