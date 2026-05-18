@@ -1,8 +1,8 @@
-# Laptop A: Sync local changes to S3
+﻿# Laptop A: Sync local changes to S3
 # Usage: .\sync-to-s3.ps1
 
 # Configuration
-$S3_BUCKET = $env:S3_BUCKET  # Set this env var or hardcode: "my-bucket-name"
+$S3_BUCKET = "dipanjan-docs-personalproject"  # Set this env var or hardcode: "my-bucket-name"
 $S3_PATH = "vacation-planner"
 $LOCAL_PATH = Get-Location
 
@@ -24,6 +24,7 @@ $excludeFilter = "--exclude " + $excludeFilter
 Write-Host "⏳ Syncing files to S3..."
 aws s3 sync $LOCAL_PATH "s3://$S3_BUCKET/$S3_PATH/" `
     --region us-west-2 `
+    --no-verify-ssl `
     --delete
 
 if ($LASTEXITCODE -eq 0) {
