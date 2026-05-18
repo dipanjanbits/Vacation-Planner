@@ -1,0 +1,79 @@
+name: Auto-sync from S3 to GitHub
+
+on:
+  schedule:
+    # Run every hour (adjust as needed)
+    - cron: '0 * * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync-s3-to-github:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better commits
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+      
+      - name: Sync from S3
+        id: s3-sync
+        run: |
+          echo "📥 Downloading from S3..."
+          aws s3 sync "s3://${{ secrets.S3_BUCKET }}/vacation-planner/" . \
+            --region us-west-2 \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --exclude ".env*" \
+            --exclude "*.log" \
+            --delete
+          
+          echo "✅ S3 sync complete"
+      
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git diff --stat
+          fi
+      
+      - name: Configure git
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+      
+      - name: Commit and push changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git add -A
+          git commit -m "chore: auto-sync from S3 [${{ github.run_number }}]" \
+            -m "Automatically synced from S3 bucket vacation-planner/" \
+            -m "Triggered by: GitHub Actions (auto-sync-s3.yml)" \
+            -m "Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          
+          git push origin ${{ github.ref_name }}
+          echo "✅ Pushed to GitHub"
+      
+      - name: Summary
+        run: |
+          echo "### Auto-sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- S3 Source: \`s3://${{ secrets.S3_BUCKET }}/vacation-planner/\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Changes: ${{ steps.changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
