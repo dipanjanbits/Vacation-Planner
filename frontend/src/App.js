@@ -3,7 +3,7 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import Select from 'react-select';
 
-// Use runtime config (loaded from public/config.js)
+// / Use runtime config (loaded from public/config.js)
 // Falls back to environment variable, then localhost for development
 const getApiBase = () => {
   const runtimeUrl = window.APP_CONFIG?.API_BASE;
