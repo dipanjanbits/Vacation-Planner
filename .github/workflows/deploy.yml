@@ -12,7 +12,7 @@ env:
   ECS_SERVICE: vacation-planner-service
   CONTAINER_NAME: vacation-planner
   S3_BUCKET: ${{ secrets.S3_BUCKET }}
-  S3_SYNC_PATH: Vacation-Planner
+  S3_SYNC_PATH: vacation-planner
 
 jobs:
   deploy:
