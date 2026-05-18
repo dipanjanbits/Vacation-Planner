@@ -54,6 +54,7 @@ function App() {
     setResult(null);
 
     try {
+      console.log(`Calling API at: ${API_BASE}/plan`);
       const response = await axios.post(`${API_BASE}/plan`, {
         source_city: sourceCity.value,
         destination: destination.value,

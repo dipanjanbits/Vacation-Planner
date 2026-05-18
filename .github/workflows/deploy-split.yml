@@ -295,10 +295,10 @@ jobs:
       - name: Get backend API URL
         id: api-url
         run: |
-          API_URL=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
-            --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "localhost:8000")
-          echo "url=http://$API_URL" >> $GITHUB_OUTPUT
-          echo "Backend API URL: http://$API_URL"
+          # Use ECS service discovery DNS name (internal to cluster)
+          API_URL="http://vacation-planner-api-service:8000"
+          echo "url=$API_URL" >> $GITHUB_OUTPUT
+          echo "Backend API URL (internal): $API_URL"
 
       - name: Build and push Docker image
         id: build-image
@@ -384,6 +384,13 @@ jobs:
               aws ec2 describe-security-groups --filters "Name=group-name,Values=vp-fe-ecs-sg" "Name=vpc-id,Values=$VPC_ID" \
               --query 'SecurityGroups[0].GroupId' --output text)
             aws ec2 authorize-security-group-ingress --group-id $FE_ECS_SG --protocol tcp --port 80 --source-group $FE_ALB_SG 2>/dev/null || true
+
+            # Allow frontend to reach backend API ALB on port 80
+            BACKEND_ALB_SG=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=vp-api-alb-sg" "Name=vpc-id,Values=$VPC_ID" \
+              --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")
+            if [ -n "$BACKEND_ALB_SG" ]; then
+              aws ec2 authorize-security-group-ingress --group-id $BACKEND_ALB_SG --protocol tcp --port 80 --source-group $FE_ECS_SG 2>/dev/null || true
+            fi
 
             # Create ALB
             FE_ALB_ARN=$(aws elbv2 create-load-balancer \
