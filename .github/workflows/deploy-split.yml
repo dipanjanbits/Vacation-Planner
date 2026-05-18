@@ -300,8 +300,6 @@ jobs:
           REACT_APP_API_URL: ${{ secrets.BACKEND_API_URL || needs.deploy-backend.outputs.api-url }}
         run: |
           echo "🔨 Building frontend with API URL: $REACT_APP_API_URL"
-          # Replace placeholder in config.js with actual backend URL
-          sed -i "s|__BACKEND_API_URL__|${REACT_APP_API_URL}|g" public/config.js
           npm run build
 
       - name: Create S3 bucket if not exists
@@ -367,11 +365,36 @@ jobs:
             "Enabled": true,
             "DefaultRootObject": "index.html",
             "Origins": {
+              "Quantity": 2,
+              "Items": [
+                {
+                  "Id": "S3Origin",
+                  "DomainName": "${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com",
+                  "S3OriginConfig": { "OriginAccessIdentity": "" }
+                },
+                {
+                  "Id": "APIOrigin",
+                  "DomainName": "$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb --query 'LoadBalancers[0].DNSName' --output text)",
+                  "CustomOriginConfig": {
+                    "HTTPPort": 80,
+                    "HTTPSPort": 443,
+                    "OriginProtocolPolicy": "http-only"
+                  }
+                }
+              ]
+            },
+            "CacheBehaviors": {
               "Quantity": 1,
               "Items": [{
-                "Id": "S3Origin",
-                "DomainName": "${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com",
-                "S3OriginConfig": { "OriginAccessIdentity": "" }
+                "PathPattern": "/api/*",
+                "TargetOriginId": "APIOrigin",
+                "ViewerProtocolPolicy": "https-only",
+                "AllowedMethods": { "Quantity": 7, "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"], "CachedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] } },
+                "ForwardedValues": { "QueryString": true, "Cookies": { "Forward": "none" }, "Headers": { "Quantity": 3, "Items": ["Origin","Access-Control-Request-Headers","Access-Control-Request-Method"] } },
+                "MinTTL": 0,
+                "DefaultTTL": 0,
+                "MaxTTL": 0,
+                "Compress": false
               }]
             },
             "DefaultCacheBehavior": {
@@ -405,28 +428,25 @@ jobs:
 
       - name: Update runtime config with backend URL
         run: |
-          BACKEND_API_URL="${{ needs.deploy-backend.outputs.api-url }}"
-          
-          # Check if backend URL is valid (not "pending")
-          if [[ "$BACKEND_API_URL" == *"pending"* ]] || [[ -z "$BACKEND_API_URL" ]]; then
-            echo "⚠️  Backend API URL is not ready, using fallback"
-            BACKEND_API_URL="http://localhost:8000"
+          # Prefer the GitHub secret (manually set), fall back to job output
+          BACKEND_API_URL="${{ secrets.BACKEND_API_URL }}"
+          if [[ -z "$BACKEND_API_URL" ]] || [[ "$BACKEND_API_URL" == *"pending"* ]]; then
+            BACKEND_API_URL="${{ needs.deploy-backend.outputs.api-url }}"
           fi
-          
-          # Create updated config.js
+          if [[ -z "$BACKEND_API_URL" ]] || [[ "$BACKEND_API_URL" == *"pending"* ]]; then
+            # Last resort: fetch directly from AWS
+            BACKEND_API_URL="http://$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+              --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo 'localhost:8000')"
+          fi
+
+          echo "✅ Updating config.js with API_BASE: $BACKEND_API_URL"
           cat > /tmp/config.js << EOF
-          // Runtime configuration - updated at deployment time
-          window.APP_CONFIG = {
-            API_BASE: '$BACKEND_API_URL'
-          };
+          window.APP_CONFIG = { API_BASE: '$BACKEND_API_URL' };
           EOF
-          
-          # Upload config.js to S3 (don't cache it)
+
           aws s3 cp /tmp/config.js s3://$BUCKET_NAME/config.js \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "application/javascript"
-          
-          echo "✅ Updated config.js with API_BASE: $BACKEND_API_URL"
 
       - name: Invalidate CloudFront cache
         if: steps.cloudfront.outputs.dist-id != ''

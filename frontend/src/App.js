@@ -7,9 +7,12 @@ import Select from 'react-select';
 // Falls back to environment variable, then localhost for development
 const getApiBase = () => {
   const runtimeUrl = window.APP_CONFIG?.API_BASE;
-  // Ignore placeholder value
   if (runtimeUrl && runtimeUrl !== '__BACKEND_API_URL__' && runtimeUrl !== '') {
     return runtimeUrl;
+  }
+  // In production via CloudFront, use relative /api path to avoid mixed-content issues
+  if (window.location.protocol === 'https:') {
+    return '/api';
   }
   return process.env.REACT_APP_API_URL || 'http://localhost:8000';
 };

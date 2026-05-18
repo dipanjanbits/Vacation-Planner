@@ -56,7 +56,8 @@ import json
 app = FastAPI(
     title="Vacation Planner API",
     description="AI-powered vacation planning API using CrewAI and AWS Bedrock",
-    version="1.0.0"
+    version="1.0.0",
+    root_path="/api"
 )
 
 # CORS - allow React frontend from any origin
