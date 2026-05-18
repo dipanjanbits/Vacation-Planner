@@ -1,0 +1,408 @@
+name: Deploy Backend (AgentCore) + Frontend (CloudFront)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'src/**'
+      - 'pyproject.toml'
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'What to deploy'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - backend-only
+          - frontend-only
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: vacation-planner-api
+  ECS_CLUSTER: vacation-planner-cluster
+  ECS_SERVICE: vacation-planner-api-service
+  CONTAINER_NAME: vacation-planner-api
+  FRONTEND_S3_BUCKET: vacation-planner-frontend
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════
+  # BACKEND: Build & Deploy FastAPI to ECS / Bedrock AgentCore
+  # ═══════════════════════════════════════════════════════════════
+  deploy-backend:
+    name: 🚀 Deploy Backend API
+    runs-on: ubuntu-latest
+    if: >
+      github.event.inputs.deploy_target != 'frontend-only'
+    outputs:
+      api-url: ${{ steps.output.outputs.api-url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Create ECR repository if not exists
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
+
+      - name: Build and push Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f backend/Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create CloudWatch Logs group
+        run: |
+          aws logs create-log-group --log-group-name /ecs/vacation-planner-api --region ${{ env.AWS_REGION }} 2>/dev/null || true
+          aws logs put-retention-policy --log-group-name /ecs/vacation-planner-api --retention-in-days 14 --region ${{ env.AWS_REGION }} || true
+
+      - name: Create ECS Task Execution Role
+        run: |
+          aws iam get-role --role-name ecsTaskExecutionRole 2>/dev/null || \
+          (aws iam create-role \
+            --role-name ecsTaskExecutionRole \
+            --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ecs-tasks.amazonaws.com"},"Action":"sts:AssumeRole"}]}' && \
+          aws iam attach-role-policy \
+            --role-name ecsTaskExecutionRole \
+            --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy)
+
+      - name: Create ECS Task Role (Bedrock access)
+        run: |
+          aws iam get-role --role-name vacationPlannerTaskRole 2>/dev/null || \
+          (aws iam create-role \
+            --role-name vacationPlannerTaskRole \
+            --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ecs-tasks.amazonaws.com"},"Action":"sts:AssumeRole"}]}' && \
+          aws iam put-role-policy \
+            --role-name vacationPlannerTaskRole \
+            --policy-name BedrockInvokeAccess \
+            --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"],"Resource":"*"}]}')
+
+      - name: Register ECS Task Definition
+        id: task-def
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          cat > /tmp/task-def.json << EOF
+          {
+            "family": "vacation-planner-api",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "1024",
+            "memory": "3072",
+            "executionRoleArn": "arn:aws:iam::${ACCOUNT_ID}:role/ecsTaskExecutionRole",
+            "taskRoleArn": "arn:aws:iam::${ACCOUNT_ID}:role/vacationPlannerTaskRole",
+            "containerDefinitions": [
+              {
+                "name": "${{ env.CONTAINER_NAME }}",
+                "image": "${{ steps.build-image.outputs.image }}",
+                "essential": true,
+                "portMappings": [
+                  { "containerPort": 8000, "protocol": "tcp" }
+                ],
+                "environment": [
+                  {"name": "AWS_DEFAULT_REGION", "value": "${{ env.AWS_REGION }}"},
+                  {"name": "SERPER_API_KEY", "value": "${{ secrets.SERPER_API_KEY }}"},
+                  {"name": "ALLOWED_ORIGINS", "value": "${{ secrets.FRONTEND_URL }}"},
+                  {"name": "SSL_VERIFY", "value": "false"},
+                  {"name": "PYTHONHTTPSVERIFY", "value": "0"}
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/vacation-planner-api",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "api",
+                    "awslogs-create-group": "true"
+                  }
+                }
+              }
+            ]
+          }
+          EOF
+
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task-def-arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Setup Infrastructure (first deploy)
+        id: infra
+        run: |
+          # Check if service exists
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            echo "service-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "service-exists=false" >> $GITHUB_OUTPUT
+
+            # Create cluster
+            aws ecs create-cluster --cluster-name ${{ env.ECS_CLUSTER }} 2>/dev/null || true
+
+            # Get default VPC and subnets
+            VPC_ID=$(aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" --query 'Vpcs[0].VpcId' --output text)
+            SUBNETS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[*].SubnetId' --output text | tr '\t' ' ')
+            SUBNET_1=$(echo $SUBNETS | cut -d' ' -f1)
+            SUBNET_2=$(echo $SUBNETS | cut -d' ' -f2)
+
+            # Create security groups
+            ALB_SG=$(aws ec2 create-security-group \
+              --group-name vp-api-alb-sg --description "API ALB SG" --vpc-id $VPC_ID \
+              --query 'GroupId' --output text 2>/dev/null || \
+              aws ec2 describe-security-groups --filters "Name=group-name,Values=vp-api-alb-sg" "Name=vpc-id,Values=$VPC_ID" \
+              --query 'SecurityGroups[0].GroupId' --output text)
+            aws ec2 authorize-security-group-ingress --group-id $ALB_SG --protocol tcp --port 80 --cidr 0.0.0.0/0 2>/dev/null || true
+            aws ec2 authorize-security-group-ingress --group-id $ALB_SG --protocol tcp --port 443 --cidr 0.0.0.0/0 2>/dev/null || true
+
+            ECS_SG=$(aws ec2 create-security-group \
+              --group-name vp-api-ecs-sg --description "API ECS SG" --vpc-id $VPC_ID \
+              --query 'GroupId' --output text 2>/dev/null || \
+              aws ec2 describe-security-groups --filters "Name=group-name,Values=vp-api-ecs-sg" "Name=vpc-id,Values=$VPC_ID" \
+              --query 'SecurityGroups[0].GroupId' --output text)
+            aws ec2 authorize-security-group-ingress --group-id $ECS_SG --protocol tcp --port 8000 --source-group $ALB_SG 2>/dev/null || true
+
+            # Create ALB
+            ALB_ARN=$(aws elbv2 create-load-balancer \
+              --name vacation-planner-api-alb --subnets $SUBNET_1 $SUBNET_2 \
+              --security-groups $ALB_SG --scheme internet-facing \
+              --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || \
+              aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+              --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+
+            ALB_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $ALB_ARN \
+              --query 'LoadBalancers[0].DNSName' --output text)
+
+            # Create Target Group
+            TG_ARN=$(aws elbv2 create-target-group \
+              --name vp-api-tg --protocol HTTP --port 8000 --vpc-id $VPC_ID \
+              --target-type ip --health-check-path /health \
+              --health-check-interval-seconds 30 --healthy-threshold-count 2 \
+              --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || \
+              aws elbv2 describe-target-groups --names vp-api-tg \
+              --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+            # Create Listener
+            aws elbv2 create-listener --load-balancer-arn $ALB_ARN \
+              --protocol HTTP --port 80 --default-actions Type=forward,TargetGroupArn=$TG_ARN 2>/dev/null || true
+
+            # Create ECS Service
+            aws ecs create-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service-name ${{ env.ECS_SERVICE }} \
+              --task-definition ${{ steps.task-def.outputs.task-def-arn }} \
+              --desired-count 1 --launch-type FARGATE \
+              --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$ECS_SG],assignPublicIp=ENABLED}" \
+              --load-balancers "targetGroupArn=$TG_ARN,containerName=${{ env.CONTAINER_NAME }},containerPort=8000"
+
+            echo "api-url=http://$ALB_DNS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update ECS Service
+        if: steps.infra.outputs.service-exists == 'true'
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.task-def.outputs.task-def-arn }} \
+            --force-new-deployment
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for backend service to stabilize..."
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} || true
+
+      - name: Output API URL
+        id: output
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+            --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "pending")
+          echo "api-url=http://$ALB_DNS" >> $GITHUB_OUTPUT
+          echo "================================================"
+          echo "✅ Backend API URL: http://$ALB_DNS"
+          echo "================================================"
+
+  # ═══════════════════════════════════════════════════════════════
+  # FRONTEND: Build React & Deploy to S3 + CloudFront
+  # ═══════════════════════════════════════════════════════════════
+  deploy-frontend:
+    name: 🌐 Deploy Frontend (S3 + CloudFront)
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    if: >
+      always() &&
+      github.event.inputs.deploy_target != 'backend-only' &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Build React app
+        working-directory: frontend
+        env:
+          REACT_APP_API_URL: ${{ secrets.BACKEND_API_URL || needs.deploy-backend.outputs.api-url }}
+        run: npm run build
+
+      - name: Create S3 bucket if not exists
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="${{ env.FRONTEND_S3_BUCKET }}-${ACCOUNT_ID}"
+          echo "BUCKET_NAME=$BUCKET" >> $GITHUB_ENV
+
+          aws s3api head-bucket --bucket $BUCKET 2>/dev/null || \
+          aws s3 mb s3://$BUCKET --region ${{ env.AWS_REGION }}
+
+          # Set bucket for static website hosting
+          aws s3 website s3://$BUCKET/ --index-document index.html --error-document index.html
+
+          # Set public access (for CloudFront OAI, or public)
+          aws s3api put-public-access-block --bucket $BUCKET \
+            --public-access-block-configuration "BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false" 2>/dev/null || true
+
+          # Bucket policy for public read
+          cat > /tmp/bucket-policy.json << EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Sid": "PublicReadGetObject",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:GetObject",
+              "Resource": "arn:aws:s3:::${BUCKET}/*"
+            }]
+          }
+          EOF
+          aws s3api put-bucket-policy --bucket $BUCKET --policy file:///tmp/bucket-policy.json
+
+      - name: Deploy to S3
+        working-directory: frontend
+        run: |
+          aws s3 sync build/ s3://$BUCKET_NAME/ --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html" --exclude "service-worker.js"
+          
+          # Upload index.html with no-cache
+          aws s3 cp build/index.html s3://$BUCKET_NAME/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Create or Get CloudFront Distribution
+        id: cloudfront
+        run: |
+          # Check if distribution already exists
+          EXISTING_DIST_ID=$(aws cloudfront list-distributions 2>/dev/null | \
+            jq -r '.DistributionList.Items[] | select(.Comment=="Vacation Planner React Frontend") | .Id' | head -1)
+
+          if [ -n "$EXISTING_DIST_ID" ] && [ "$EXISTING_DIST_ID" != "null" ]; then
+            echo "dist-id=$EXISTING_DIST_ID" >> $GITHUB_OUTPUT
+            CF_DOMAIN=$(aws cloudfront get-distribution --id $EXISTING_DIST_ID \
+              --query 'Distribution.DomainName' --output text)
+            echo "cf-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
+          else
+            # Create new CloudFront distribution
+            cat > /tmp/cf-config.json << EOF
+          {
+            "CallerReference": "vp-frontend-$(date +%s)",
+            "Comment": "Vacation Planner React Frontend",
+            "Enabled": true,
+            "DefaultRootObject": "index.html",
+            "Origins": {
+              "Quantity": 1,
+              "Items": [{
+                "Id": "S3Origin",
+                "DomainName": "${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com",
+                "S3OriginConfig": { "OriginAccessIdentity": "" }
+              }]
+            },
+            "DefaultCacheBehavior": {
+              "TargetOriginId": "S3Origin",
+              "ViewerProtocolPolicy": "redirect-to-https",
+              "AllowedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"], "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] } },
+              "ForwardedValues": { "QueryString": false, "Cookies": { "Forward": "none" } },
+              "MinTTL": 0,
+              "DefaultTTL": 86400,
+              "MaxTTL": 31536000,
+              "Compress": true
+            },
+            "CustomErrorResponses": {
+              "Quantity": 1,
+              "Items": [{
+                "ErrorCode": 404,
+                "ResponseCode": "200",
+                "ResponsePagePath": "/index.html",
+                "ErrorCachingMinTTL": 300
+              }]
+            }
+          }
+          EOF
+
+            RESULT=$(aws cloudfront create-distribution --distribution-config file:///tmp/cf-config.json)
+            DIST_ID=$(echo $RESULT | jq -r '.Distribution.Id')
+            CF_DOMAIN=$(echo $RESULT | jq -r '.Distribution.DomainName')
+            echo "dist-id=$DIST_ID" >> $GITHUB_OUTPUT
+            echo "cf-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Invalidate CloudFront cache
+        if: steps.cloudfront.outputs.dist-id != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.cloudfront.outputs.dist-id }} \
+            --paths "/*"
+
+      - name: Print deployment URLs
+        run: |
+          echo "================================================"
+          echo "✅ DEPLOYMENT COMPLETE"
+          echo "================================================"
+          echo "🌐 Frontend: https://${{ steps.cloudfront.outputs.cf-domain }}"
+          echo "🔌 Backend API: ${{ needs.deploy-backend.outputs.api-url }}"
+          echo "================================================"
+          echo ""
+          echo "⚠️  IMPORTANT: Update BACKEND_API_URL secret to:"
+          echo "    ${{ needs.deploy-backend.outputs.api-url }}"
+          echo ""
+          echo "⚠️  Update backend ALLOWED_ORIGINS to:"
+          echo "    https://${{ steps.cloudfront.outputs.cf-domain }}"
+          echo "================================================"
