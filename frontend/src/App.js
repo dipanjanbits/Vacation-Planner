@@ -39,30 +39,6 @@ const WORLD_CITIES = [
   "Vancouver", "Venice", "Vienna", "Warsaw", "Washington DC", "Wellington", "Zurich"
 ].map(c => ({ value: c, label: c }));
 
-// Embedded cities list - no backend dependency for dropdown
-const WORLD_CITIES = [
-  "Abu Dhabi", "Accra", "Addis Ababa", "Adelaide", "Agra", "Ahmedabad", "Alexandria",
-  "Algiers", "Amman", "Amsterdam", "Anchorage", "Ankara", "Antalya", "Antwerp", "Athens",
-  "Atlanta", "Auckland", "Austin", "Baghdad", "Baku", "Bali", "Baltimore", "Bangalore",
-  "Bangkok", "Barcelona", "Basel", "Beijing", "Beirut", "Belfast", "Belgrade", "Bergen",
-  "Berlin", "Bern", "Bogota", "Bologna", "Boston", "Brasilia", "Bratislava", "Brisbane",
-  "Brussels", "Bucharest", "Budapest", "Buenos Aires", "Cairo", "Calgary", "Cancun",
-  "Cape Town", "Caracas", "Chennai", "Chicago", "Colombo", "Copenhagen", "Dallas",
-  "Delhi", "Denver", "Detroit", "Dhaka", "Doha", "Dubai", "Dublin", "Dubrovnik",
-  "Edinburgh", "Florence", "Frankfurt", "Geneva", "Goa", "Hamburg", "Hanoi", "Helsinki",
-  "Ho Chi Minh City", "Hong Kong", "Honolulu", "Houston", "Hyderabad", "Istanbul",
-  "Jaipur", "Jakarta", "Jerusalem", "Johannesburg", "Karachi", "Kathmandu", "Kochi",
-  "Kolkata", "Krakow", "Kuala Lumpur", "Kyoto", "Lagos", "Las Vegas", "Lisbon",
-  "Liverpool", "London", "Los Angeles", "Madrid", "Male", "Manchester", "Manila",
-  "Marrakech", "Melbourne", "Mexico City", "Miami", "Milan", "Montreal", "Moscow",
-  "Mumbai", "Munich", "Nairobi", "Nashville", "New Orleans", "New York", "Nice",
-  "Orlando", "Osaka", "Oslo", "Paris", "Perth", "Philadelphia", "Phuket", "Portland",
-  "Porto", "Prague", "Pune", "Queenstown", "Reykjavik", "Rio de Janeiro", "Rome",
-  "San Diego", "San Francisco", "Santiago", "Sao Paulo", "Seattle", "Seoul", "Shanghai",
-  "Singapore", "Stockholm", "Sydney", "Taipei", "Tel Aviv", "Tokyo", "Toronto",
-  "Vancouver", "Venice", "Vienna", "Warsaw", "Washington DC", "Wellington", "Zurich"
-].map(c => ({ value: c, label: c }));
-
 function App() {
   const [cities] = useState(WORLD_CITIES);
   const [sourceCity, setSourceCity] = useState(null);
