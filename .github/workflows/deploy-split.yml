@@ -344,10 +344,12 @@ jobs:
           aws s3 cp build/index.html s3://$BUCKET_NAME/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
 
-      - name: Create or Get CloudFront Distribution
+      - name: Create or Update CloudFront Distribution
         id: cloudfront
         run: |
-          # Check if distribution already exists
+          ALB_DNS=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+            --query 'LoadBalancers[0].DNSName' --output text)
+
           EXISTING_DIST_ID=$(aws cloudfront list-distributions 2>/dev/null | \
             jq -r '.DistributionList.Items[] | select(.Comment=="Vacation Planner React Frontend") | .Id' | head -1)
 
@@ -356,8 +358,66 @@ jobs:
             CF_DOMAIN=$(aws cloudfront get-distribution --id $EXISTING_DIST_ID \
               --query 'Distribution.DomainName' --output text)
             echo "cf-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
+
+            # Check if APIOrigin already exists
+            HAS_API_ORIGIN=$(aws cloudfront get-distribution-config --id $EXISTING_DIST_ID | \
+              jq -r '.DistributionConfig.Origins.Items[] | select(.Id=="APIOrigin") | .Id' 2>/dev/null || echo "")
+
+            if [ -z "$HAS_API_ORIGIN" ]; then
+              echo "Adding APIOrigin and /api/* behavior to existing distribution..."
+              ETAG=$(aws cloudfront get-distribution-config --id $EXISTING_DIST_ID --query 'ETag' --output text)
+              aws cloudfront get-distribution-config --id $EXISTING_DIST_ID \
+                --query 'DistributionConfig' --output json > /tmp/cf-existing.json
+
+              # Inject APIOrigin and /api/* cache behavior
+              jq --arg alb "$ALB_DNS" '
+                .Origins.Quantity += 1 |
+                .Origins.Items += [{
+                  "Id": "APIOrigin",
+                  "DomainName": $alb,
+                  "CustomOriginConfig": {
+                    "HTTPPort": 80, "HTTPSPort": 443,
+                    "OriginProtocolPolicy": "http-only",
+                    "OriginSSLProtocols": {"Quantity": 1, "Items": ["TLSv1.2"]},
+                    "OriginReadTimeout": 60,
+                    "OriginKeepaliveTimeout": 5
+                  },
+                  "S3OriginConfig": null
+                }] |
+                .CacheBehaviors.Quantity += 1 |
+                .CacheBehaviors.Items += [{
+                  "PathPattern": "/api/*",
+                  "TargetOriginId": "APIOrigin",
+                  "ViewerProtocolPolicy": "https-only",
+                  "AllowedMethods": {
+                    "Quantity": 7,
+                    "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"],
+                    "CachedMethods": {"Quantity": 2, "Items": ["GET","HEAD"]}
+                  },
+                  "ForwardedValues": {
+                    "QueryString": true,
+                    "Cookies": {"Forward": "none"},
+                    "Headers": {"Quantity": 3, "Items": ["Origin","Access-Control-Request-Headers","Access-Control-Request-Method"]}
+                  },
+                  "MinTTL": 0, "DefaultTTL": 0, "MaxTTL": 0,
+                  "Compress": false,
+                  "TrustedSigners": {"Enabled": false, "Quantity": 0},
+                  "LambdaFunctionAssociations": {"Quantity": 0},
+                  "FieldLevelEncryptionId": "",
+                  "SmoothStreaming": false
+                }]
+              ' /tmp/cf-existing.json > /tmp/cf-updated.json
+
+              aws cloudfront update-distribution \
+                --id $EXISTING_DIST_ID \
+                --if-match $ETAG \
+                --distribution-config file:///tmp/cf-updated.json
+              echo "✅ CloudFront distribution updated with APIOrigin"
+            else
+              echo "✅ APIOrigin already exists, skipping update"
+            fi
           else
-            # Create new CloudFront distribution
+            # Create new distribution with both origins
             cat > /tmp/cf-config.json << EOF
           {
             "CallerReference": "vp-frontend-$(date +%s)",
@@ -374,11 +434,13 @@ jobs:
                 },
                 {
                   "Id": "APIOrigin",
-                  "DomainName": "$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb --query 'LoadBalancers[0].DNSName' --output text)",
+                  "DomainName": "${ALB_DNS}",
                   "CustomOriginConfig": {
-                    "HTTPPort": 80,
-                    "HTTPSPort": 443,
-                    "OriginProtocolPolicy": "http-only"
+                    "HTTPPort": 80, "HTTPSPort": 443,
+                    "OriginProtocolPolicy": "http-only",
+                    "OriginSSLProtocols": {"Quantity": 1, "Items": ["TLSv1.2"]},
+                    "OriginReadTimeout": 60,
+                    "OriginKeepaliveTimeout": 5
                   }
                 }
               ]
@@ -391,10 +453,12 @@ jobs:
                 "ViewerProtocolPolicy": "https-only",
                 "AllowedMethods": { "Quantity": 7, "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"], "CachedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] } },
                 "ForwardedValues": { "QueryString": true, "Cookies": { "Forward": "none" }, "Headers": { "Quantity": 3, "Items": ["Origin","Access-Control-Request-Headers","Access-Control-Request-Method"] } },
-                "MinTTL": 0,
-                "DefaultTTL": 0,
-                "MaxTTL": 0,
-                "Compress": false
+                "MinTTL": 0, "DefaultTTL": 0, "MaxTTL": 0,
+                "Compress": false,
+                "TrustedSigners": {"Enabled": false, "Quantity": 0},
+                "LambdaFunctionAssociations": {"Quantity": 0},
+                "FieldLevelEncryptionId": "",
+                "SmoothStreaming": false
               }]
             },
             "DefaultCacheBehavior": {
@@ -402,23 +466,21 @@ jobs:
               "ViewerProtocolPolicy": "redirect-to-https",
               "AllowedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"], "CachedMethods": { "Quantity": 2, "Items": ["GET", "HEAD"] } },
               "ForwardedValues": { "QueryString": false, "Cookies": { "Forward": "none" } },
-              "MinTTL": 0,
-              "DefaultTTL": 86400,
-              "MaxTTL": 31536000,
-              "Compress": true
+              "MinTTL": 0, "DefaultTTL": 86400, "MaxTTL": 31536000,
+              "Compress": true,
+              "TrustedSigners": {"Enabled": false, "Quantity": 0},
+              "LambdaFunctionAssociations": {"Quantity": 0},
+              "FieldLevelEncryptionId": ""
             },
             "CustomErrorResponses": {
               "Quantity": 1,
               "Items": [{
-                "ErrorCode": 404,
-                "ResponseCode": "200",
-                "ResponsePagePath": "/index.html",
-                "ErrorCachingMinTTL": 300
+                "ErrorCode": 404, "ResponseCode": "200",
+                "ResponsePagePath": "/index.html", "ErrorCachingMinTTL": 300
               }]
             }
           }
           EOF
-
             RESULT=$(aws cloudfront create-distribution --distribution-config file:///tmp/cf-config.json)
             DIST_ID=$(echo $RESULT | jq -r '.Distribution.Id')
             CF_DOMAIN=$(echo $RESULT | jq -r '.Distribution.DomainName')
@@ -426,34 +488,12 @@ jobs:
             echo "cf-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update runtime config with backend URL
-        run: |
-          # Prefer the GitHub secret (manually set), fall back to job output
-          BACKEND_API_URL="${{ secrets.BACKEND_API_URL }}"
-          if [[ -z "$BACKEND_API_URL" ]] || [[ "$BACKEND_API_URL" == *"pending"* ]]; then
-            BACKEND_API_URL="${{ needs.deploy-backend.outputs.api-url }}"
-          fi
-          if [[ -z "$BACKEND_API_URL" ]] || [[ "$BACKEND_API_URL" == *"pending"* ]]; then
-            # Last resort: fetch directly from AWS
-            BACKEND_API_URL="http://$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
-              --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo 'localhost:8000')"
-          fi
-
-          echo "✅ Updating config.js with API_BASE: $BACKEND_API_URL"
-          cat > /tmp/config.js << EOF
-          window.APP_CONFIG = { API_BASE: '$BACKEND_API_URL' };
-          EOF
-
-          aws s3 cp /tmp/config.js s3://$BUCKET_NAME/config.js \
-            --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "application/javascript"
-
       - name: Invalidate CloudFront cache
         if: steps.cloudfront.outputs.dist-id != ''
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.cloudfront.outputs.dist-id }} \
-            --paths "/*" "/config.js"
+            --paths "/*"
 
       - name: Print deployment URLs
         run: |
