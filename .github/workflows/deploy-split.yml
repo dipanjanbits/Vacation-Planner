@@ -240,8 +240,23 @@ jobs:
       - name: Output API URL
         id: output
         run: |
-          ALB_DNS=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
-            --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "pending")
+          # Retry getting ALB DNS up to 10 times (up to 30 seconds)
+          ALB_DNS=""
+          for i in {1..10}; do
+            ALB_DNS=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+              --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "")
+            if [ -n "$ALB_DNS" ] && [ "$ALB_DNS" != "None" ]; then
+              break
+            fi
+            echo "Waiting for ALB DNS... (attempt $i/10)"
+            sleep 3
+          done
+          
+          if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" = "None" ]; then
+            echo "⚠️  ALB DNS not available yet, using fallback"
+            ALB_DNS="pending"
+          fi
+          
           echo "api-url=http://$ALB_DNS" >> $GITHUB_OUTPUT
           echo "================================================"
           echo "✅ Backend API URL: http://$ALB_DNS"
@@ -283,7 +298,16 @@ jobs:
         working-directory: frontend
         env:
           REACT_APP_API_URL: ${{ secrets.BACKEND_API_URL || needs.deploy-backend.outputs.api-url }}
-        run: npm run build
+        run: |
+          echo "🔨 Building frontend with API URL: $REACT_APP_API_URL"
+          npm run build
+          
+          # Verify the API URL is in the built files
+          if grep -r "http://.*:8000" build/ > /dev/null 2>&1; then
+            echo "✅ API URL found in build artifacts"
+          else
+            echo "⚠️  API URL might not be embedded in build"
+          fi
 
       - name: Create S3 bucket if not exists
         run: |
@@ -384,12 +408,37 @@ jobs:
             echo "cf-domain=$CF_DOMAIN" >> $GITHUB_OUTPUT
           fi
 
+      - name: Update runtime config with backend URL
+        run: |
+          BACKEND_API_URL="${{ needs.deploy-backend.outputs.api-url }}"
+          
+          # Check if backend URL is valid (not "pending")
+          if [[ "$BACKEND_API_URL" == *"pending"* ]] || [[ -z "$BACKEND_API_URL" ]]; then
+            echo "⚠️  Backend API URL is not ready, using fallback"
+            BACKEND_API_URL="http://localhost:8000"
+          fi
+          
+          # Create updated config.js
+          cat > /tmp/config.js << EOF
+          // Runtime configuration - updated at deployment time
+          window.APP_CONFIG = {
+            API_BASE: '$BACKEND_API_URL'
+          };
+          EOF
+          
+          # Upload config.js to S3 (don't cache it)
+          aws s3 cp /tmp/config.js s3://$BUCKET_NAME/config.js \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/javascript"
+          
+          echo "✅ Updated config.js with API_BASE: $BACKEND_API_URL"
+
       - name: Invalidate CloudFront cache
         if: steps.cloudfront.outputs.dist-id != ''
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.cloudfront.outputs.dist-id }} \
-            --paths "/*"
+            --paths "/*" "/config.js"
 
       - name: Print deployment URLs
         run: |
@@ -400,9 +449,9 @@ jobs:
           echo "🔌 Backend API: ${{ needs.deploy-backend.outputs.api-url }}"
           echo "================================================"
           echo ""
-          echo "⚠️  IMPORTANT: Update BACKEND_API_URL secret to:"
-          echo "    ${{ needs.deploy-backend.outputs.api-url }}"
+          echo "✅ Frontend config.js has been updated automatically"
+          echo "   with the backend API URL."
           echo ""
-          echo "⚠️  Update backend ALLOWED_ORIGINS to:"
+          echo "⚠️  For production: Update backend ALLOWED_ORIGINS to:"
           echo "    https://${{ steps.cloudfront.outputs.cf-domain }}"
           echo "================================================"

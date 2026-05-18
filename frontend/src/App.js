@@ -3,8 +3,9 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import AsyncSelect from 'react-select/async';
 
-// Use environment variable for API URL, fall back to localhost for development
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Use runtime config (loaded from public/config.js)
+// Falls back to environment variable for development
+const API_BASE = window.APP_CONFIG?.API_BASE || process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function App() {
   const [cities, setCities] = useState([]);
