@@ -3,7 +3,7 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import Select from 'react-select';
 
-// / Use runtime config (loaded from public/config.js)
+// // Use runtime config (loaded from public/config.js)
 // Falls back to environment variable, then localhost for development
 const getApiBase = () => {
   // On HTTPS (CloudFront), always use relative /api path — proxied by CloudFront to ALB
