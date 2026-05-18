@@ -19,22 +19,30 @@ ssl._create_default_https_context = ssl._create_unverified_context
 # Disable urllib3 warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Patch httpx before it's imported by litellm
-import httpx._config as httpx_config
-original_create_ssl_context = httpx_config.create_ssl_context
-
-def patched_create_ssl_context(verify=True, cert=None, trust_env=True):
-    """Patched SSL context that skips certificate verification."""
-    try:
-        return original_create_ssl_context(verify=False, cert=cert, trust_env=trust_env)
-    except Exception:
-        # Fallback: create unverified context
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
-
-httpx_config.create_ssl_context = patched_create_ssl_context
+# Patch httpx module functions before they're used
+try:
+    import httpx._config as httpx_config
+    original_create_ssl_context = httpx_config.create_ssl_context
+    
+    def patched_create_ssl_context(verify=True, cert=None, trust_env=True):
+        """Patched SSL context that skips certificate verification."""
+        try:
+            # Try to create without verification first
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            return context
+        except Exception as e:
+            # Fallback: create minimal SSL context
+            import ssl as ssl_module
+            context = ssl_module.SSLContext(ssl_module.PROTOCOL_TLS_CLIENT)
+            context.check_hostname = False
+            context.verify_mode = ssl_module.CERT_NONE
+            return context
+    
+    httpx_config.create_ssl_context = patched_create_ssl_context
+except Exception:
+    pass  # httpx not available yet, will patch later
 
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
@@ -43,7 +51,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 
-from vacation_planner.crew import VacationPlanner
+# Don't import VacationPlanner here - it will be lazy loaded to allow SSL patches to work
 
 app = FastAPI(
     title="Vacation Planner API",
@@ -88,6 +96,9 @@ def health_check():
 def create_plan(request: PlanRequest):
     """Run the full vacation planning crew and return all results."""
     try:
+        # Lazy import VacationPlanner here to ensure SSL patches are applied first
+        from vacation_planner.crew import VacationPlanner
+        
         inputs = {
             "topic": request.destination,
             "source_city": request.source_city,
