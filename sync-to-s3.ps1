@@ -1,6 +1,6 @@
 ﻿# Laptop A: Sync local changes to S3
 # Usage: .\sync-to-s3.ps1
-#new comment
+#new comment   s
 # Configuration
 $S3_BUCKET = "dipanjan-docs-personalproject"  # Set this env var or hardcode: "my-bucket-name"
 $S3_PATH = "vacation-planner"

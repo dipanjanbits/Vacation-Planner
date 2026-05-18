@@ -1,4 +1,4 @@
-# Laptop A: Pull latest changes from S3 (after Laptop B syncs)
+﻿# Laptop A: Pull latest changes from S3 (after Laptop B syncs)
 # Usage: .\sync-from-s3-laptop-a.ps1
 
 # Configuration
@@ -20,6 +20,7 @@ Write-Host ""
 Write-Host "⬇️  Syncing from S3..."
 aws s3 sync "s3://$S3_BUCKET/$S3_PATH/" $LOCAL_PATH `
     --region us-west-2 `
+    --no-verify-ssl `
     --delete
 
 if ($LASTEXITCODE -ne 0) {
