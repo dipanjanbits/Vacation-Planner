@@ -1,116 +1,102 @@
-# 5-Day Itinerary for Paris
+# 3-Day Itinerary for a Trip from Kolkata to Delhi
 
-## Day 1: Arrival and Exploration
+## Day 1: Kolkata to Delhi
 
 ### Morning
-- **Arrival at Charles de Gaulle Airport**
-  - Take the RER B train to central Paris (approx. 35 minutes).
+- **Travel from Kolkata to Delhi**
+  - **Flight**: Book a morning flight from Kolkata's Netaji Subhash Chandra Bose International Airport to Delhi's Indira Gandhi International Airport. Estimated flight time is 2 hours.
+  - **Cost**: Approximately ₹5,000 - ₹8,000 (round trip).
+
+### Afternoon
 - **Check-in at Hotel**
-  - Suggested Hotel: Hôtel des Arts Montmartre
-- **Breakfast at a Local Café**
-  - Recommended: Les Deux Moulins
+  - Arrive in Delhi and check into your hotel. Suggested hotels: The Leela Palace, ITC Maurya, or Taj Mahal Hotel.
+  - **Cost**: Approximately ₹10,000 - ₹20,000 per night.
 
-### Afternoon
-- **Visit the Sacré-Cœur Basilica**
-  - Explore the Montmartre district.
-- **Lunch at Le Coq Rico**
-  - Enjoy traditional French cuisine.
+- **Lunch**
+  - Head to Karim's near the Jama Masjid for a taste of Mughlai cuisine. Try the Butter Chicken and Naan.
+  - **Cost**: Approximately ₹1,000 per person.
+
+- **Visit Qutub Minar**
+  - Explore the Qutub Minar, a UNESCO World Heritage Site. Spend about 2 hours here.
+  - **Entry Fee**: ₹50 per person (free for children below 15 years).
 
 ### Evening
-- **Seine River Cruise**
-  - Book a Bateaux Mouches cruise to see the city lights.
-- **Dinner at Le Comptoir du Relais**
-  - Savor classic French dishes.
+- **Dinner**
+  - Dine at Bukhara, known for its kebabs and tandoori dishes.
+  - **Cost**: Approximately ₹2,500 per person.
 
-## Day 2: Iconic Landmarks
+- **Evening Stroll at Lodhi Garden**
+  - Take a leisurely walk in Lodhi Garden to unwind after a long day of travel.
+  - **Entry**: Free.
+
+## Day 2: Exploring Delhi
 
 ### Morning
-- **Eiffel Tower**
-  - Arrive early to avoid crowds. Consider booking tickets online.
-- **Breakfast at Ladurée**
-  - Try their famous macarons.
+- **Visit Red Fort**
+  - Start your day early with a visit to the Red Fort. Arrive by 9 AM to avoid crowds.
+  - **Entry Fee**: ₹50 per person (free for children below 15 years).
+
+- **Brunch**
+  - Enjoy a traditional Indian meal at Paranthe Wali Gali in Chandni Chowk. Try the aloo paratha and lassi.
+  - **Cost**: Approximately ₹500 per person.
 
 ### Afternoon
-- **Champs-Élysées and Arc de Triomphe**
-  - Walk down the Champs-Élysées and visit the Arc de Triomphe.
-- **Lunch at Café de l’Homme**
-  - Dine with a view of the Eiffel Tower.
+- **Explore Chandni Chowk**
+  - Spend the afternoon shopping at Chandni Chowk. Visit Old Delhi for some traditional shopping.
+  - **Cost**: Varies based on purchases.
+
+- **Lunch**
+  - Have lunch at a local eatery in Chandni Chowk. Try the chole bhature.
+  - **Cost**: Approximately ₹300 per person.
 
 ### Evening
-- **Dinner at Le Jules Verne**
-  - Located in the Eiffel Tower, offering exquisite dining.
-- **Stroll through Tuileries Garden**
-  - Relax and enjoy the evening atmosphere.
+- **Visit India Gate**
+  - Head to India Gate for an evening visit. You can take a stroll or enjoy the surroundings.
+  - **Entry**: Free.
 
-## Day 3: Art and History
+- **Dinner**
+  - Dine at The Great Kabab Factory for a variety of kebabs.
+  - **Cost**: Approximately ₹2,000 per person.
+
+## Day 3: Cultural and Modern Delhi
 
 ### Morning
-- **Louvre Museum**
-  - Allocate at least 3 hours. Book tickets in advance.
-- **Breakfast at Angelina**
-  - Famous for its hot chocolate and pastries.
+- **Visit Lotus Temple**
+  - Start your day with a visit to the Lotus Temple. Arrive by 9 AM.
+  - **Entry**: Free.
+
+- **Brunch**
+  - Enjoy a light meal at a nearby café. Try some local sweets like jalebis.
+  - **Cost**: Approximately ₹300 per person.
 
 ### Afternoon
-- **Notre-Dame Cathedral**
-  - Explore the Gothic architecture. Note: Check for any ongoing restoration work.
-- **Lunch at Les Antiquaires**
-  - Located near Notre-Dame, offering traditional French fare.
+- **Explore Hauz Khas Village**
+  - Spend the afternoon exploring Hauz Khas Village. Visit art galleries, shops, and cafes.
+  - **Cost**: Varies based on purchases.
+
+- **Lunch**
+  - Have lunch at a trendy restaurant in Hauz Khas Village. Try the fusion cuisine.
+  - **Cost**: Approximately ₹1,000 per person.
 
 ### Evening
-- **Seine River Walk**
-  - Enjoy a leisurely walk along the river.
-- **Dinner at Le Procope**
-  - One of Paris’s oldest restaurants, frequented by Voltaire and Rousseau.
+- **Visit Akshardham Temple**
+  - Head to Akshardham Temple for an evening visit. The temple is beautifully lit up at night.
+  - **Entry Fee**: ₹250 per person.
 
-## Day 4: Fashion and Shopping
+- **Dinner**
+  - Conclude your trip with dinner at a rooftop restaurant like the one at The Lodhi Hotel.
+  - **Cost**: Approximately ₹3,000 per person.
 
-### Morning
-- **Marais District**
-  - Explore the historic Marais for boutique shopping and unique finds.
-- **Breakfast at Café de la Paix**
-  - A historic café with a beautiful ambiance.
+## Travel Tips
+- **Transportation**: Use the Delhi Metro for convenient and affordable travel. Purchase a Metro Card for easier access.
+- **Hydration**: Carry a water bottle, especially given the high temperatures.
+- **Sun Protection**: Use sunscreen, wear a hat, and carry sunglasses to protect yourself from the sun.
 
-### Afternoon
-- **Musée d’Orsay**
-  - Home to an extensive collection of Impressionist art.
-- **Lunch at Les Cocottes**
-  - Modern French cuisine in a chic setting.
+## Estimated Total Cost
+- **Flight**: ₹5,000 - ₹8,000
+- **Accommodation**: ₹30,000 - ₹60,000 (3 nights)
+- **Food**: ₹11,400 (approx. ₹3,800 per day)
+- **Attractions**: ₹200 (Qutub Minar and Red Fort)
+- **Shopping and Miscellaneous**: ₹5,000 (approx.)
 
-### Evening
-- **Shopping on Rue Saint-Honoré**
-  - High-end fashion and luxury brands.
-- **Dinner at L’Ambroisie**
-  - A three-Michelin-starred restaurant for a special treat.
-
-## Day 5: Day Trip to Versailles
-
-### Morning
-- **Palace of Versailles**
-  - Take the RER C train from Paris (approx. 1 hour).
-  - Explore the opulent palace and gardens. Book tickets in advance.
-- **Breakfast at Angelina Versailles**
-  - A branch of the famous Parisian café.
-
-### Afternoon
-- **Versailles Gardens**
-  - Stroll through the formal gardens and the Hall of Mirrors.
-- **Lunch at Le Faisan Doré**
-  - Traditional French cuisine near the palace.
-
-### Evening
-- **Return to Paris**
-  - Relax at your hotel or explore a nearby neighborhood.
-- **Dinner at Le Cinq**
-  - Located in the Four Seasons Hotel George V, offering gourmet dining.
-
-## Transportation Tips
-- **Metro and RER**: Use the Paris Metro and RER for efficient travel. Purchase a Navigo Easy card for convenience.
-- **Walking**: Many attractions are within walking distance in central Paris.
-
-## Estimated Costs
-- **Accommodation**: €150-€300 per night
-- **Food**: €20-€50 per meal
-- **Attractions**: €10-€20 per entry
-- **Transportation**: €20-€30 per day for metro/RER
-
-Enjoy your trip to Paris!
+**Total Estimated Cost**: ₹51,600 - ₹78,600

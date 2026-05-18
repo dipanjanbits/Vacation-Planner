@@ -25,6 +25,8 @@ Write-Host "⏳ Syncing files to S3..."
 aws s3 sync $LOCAL_PATH "s3://$S3_BUCKET/$S3_PATH/" `
     --region us-west-2 `
     --no-verify-ssl `
+    --exclude ".venv/*" `
+    --exclude ".github/*" `
     --delete
 
 if ($LASTEXITCODE -eq 0) {
