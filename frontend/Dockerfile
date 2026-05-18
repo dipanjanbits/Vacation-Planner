@@ -6,8 +6,9 @@ RUN npm install
 COPY public/ public/
 COPY src/ src/
 
-# API calls will be proxied through nginx to /api/
-ENV REACT_APP_API_URL=/api
+# Accept API URL as build argument (from CI/CD)
+ARG REACT_APP_API_URL=http://localhost:8000
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
 RUN npm run build
 

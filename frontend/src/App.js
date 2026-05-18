@@ -3,8 +3,8 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import AsyncSelect from 'react-select/async';
 
-// Use /api/ prefix to proxy through nginx to backend
-const API_BASE = '/api';
+// Use environment variable for API URL, fall back to localhost for development
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function App() {
   const [cities, setCities] = useState([]);
@@ -17,9 +17,20 @@ function App() {
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
+    console.log('🔌 API Base URL:', API_BASE);
+    console.log('🔍 Fetching cities from:', `${API_BASE}/cities`);
+    
     axios.get(`${API_BASE}/cities`)
-      .then(res => setCities(res.data.cities.map(c => ({ value: c, label: c }))))
-      .catch(() => {});
+      .then(res => {
+        console.log('✅ Cities loaded:', res.data.cities.length, 'cities');
+        setCities(res.data.cities.map(c => ({ value: c, label: c })));
+      })
+      .catch(err => {
+        console.error('❌ Failed to load cities:');
+        console.error('   Status:', err.response?.status);
+        console.error('   Message:', err.message);
+        console.error('   Full error:', err);
+      });
   }, []);
 
   const filterCities = (inputValue) => {

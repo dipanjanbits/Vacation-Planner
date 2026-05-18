@@ -124,7 +124,7 @@ jobs:
                 "environment": [
                   {"name": "AWS_DEFAULT_REGION", "value": "${{ env.AWS_REGION }}"},
                   {"name": "SERPER_API_KEY", "value": "${{ secrets.SERPER_API_KEY }}"},
-                  {"name": "ALLOWED_ORIGINS", "value": "${{ secrets.FRONTEND_URL }}"},
+                  {"name": "ALLOWED_ORIGINS", "value": "*"},
                   {"name": "SSL_VERIFY", "value": "false"},
                   {"name": "PYTHONHTTPSVERIFY", "value": "0"}
                 ],
