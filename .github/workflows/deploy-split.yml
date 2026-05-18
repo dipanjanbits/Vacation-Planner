@@ -295,20 +295,28 @@ jobs:
       - name: Get backend API URL
         id: api-url
         run: |
-          # Use ECS service discovery DNS name (internal to cluster)
-          API_URL="http://vacation-planner-api-service:8000"
+          # Get backend ALB DNS name
+          BACKEND_ALB_DNS=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+            --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null)
+          
+          if [ -z "$BACKEND_ALB_DNS" ] || [ "$BACKEND_ALB_DNS" = "None" ]; then
+            echo "⚠️  Backend ALB not found, using localhost fallback"
+            API_URL="http://localhost:8000"
+          else
+            # ALB listens on port 80, forwards to container port 8000
+            API_URL="http://$BACKEND_ALB_DNS"
+          fi
+          
           echo "url=$API_URL" >> $GITHUB_OUTPUT
-          echo "Backend API URL (internal): $API_URL"
+          echo "Backend API URL: $API_URL"
 
       - name: Build and push Docker image
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
-          REACT_APP_API_URL: ${{ steps.api-url.outputs.url }}
         run: |
           docker build -f frontend/Dockerfile \
-            --build-arg REACT_APP_API_URL=$REACT_APP_API_URL \
             -t $ECR_REGISTRY/vacation-planner-frontend:$IMAGE_TAG \
             -t $ECR_REGISTRY/vacation-planner-frontend:latest \
             frontend/
@@ -325,6 +333,11 @@ jobs:
         id: task-def
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          
+          # Get backend ALB DNS
+          BACKEND_ALB_DNS=$(aws elbv2 describe-load-balancers --names vacation-planner-api-alb \
+            --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "vacation-planner-api-alb")
+          
           cat > /tmp/frontend-task-def.json << EOF
           {
             "family": "vacation-planner-frontend",
@@ -338,6 +351,9 @@ jobs:
               "image": "${{ steps.build-image.outputs.image }}",
               "essential": true,
               "portMappings": [{ "containerPort": 80, "protocol": "tcp" }],
+              "environment": [
+                { "name": "API_BASE_URL", "value": "http://${BACKEND_ALB_DNS}" }
+              ],
               "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {

@@ -16,5 +16,14 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=build /app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Create entrypoint script to inject env vars
+RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
+    echo 'export API_BASE_URL=${API_BASE_URL:-http://localhost:8000}' >> /docker-entrypoint.sh && \
+    echo 'envsubst < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp' >> /docker-entrypoint.sh && \
+    echo 'mv /etc/nginx/conf.d/default.conf.tmp /etc/nginx/conf.d/default.conf' >> /docker-entrypoint.sh && \
+    echo 'nginx -g "daemon off;"' >> /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

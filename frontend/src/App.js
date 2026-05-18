@@ -6,7 +6,9 @@ import Select from 'react-select';
 // // Use runtime config (loaded from public/config.js)
 // Falls back to environment variable, then localhost for development
 const getApiBase = () => {
-  // Use runtime config injected at build time, or fall back to same-host for local dev
+  // Try to get from window (injected by nginx)
+  if (window.API_BASE) return window.API_BASE;
+  // Fall back to env var from build time
   return process.env.REACT_APP_API_URL || 'http://localhost:8000';
 };
 const API_BASE = getApiBase();
